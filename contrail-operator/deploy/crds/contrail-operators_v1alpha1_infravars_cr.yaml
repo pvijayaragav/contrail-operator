@@ -1,0 +1,8 @@
+apiVersion: contrail-operators.juniper.net/v1alpha1
+kind: InfraVars
+metadata:
+  name: example-infravars
+spec:
+  # Add fields here
+  contrailMasters: "192.168.1.4"
+  apiServer: "192.168.1.3"

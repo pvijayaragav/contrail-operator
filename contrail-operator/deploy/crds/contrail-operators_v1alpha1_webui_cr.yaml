@@ -1,0 +1,7 @@
+apiVersion: contrail-operators.juniper.net/v1alpha1
+kind: WebUI
+metadata:
+  name: example-webui
+spec:
+  # Add fields here
+  size: 3

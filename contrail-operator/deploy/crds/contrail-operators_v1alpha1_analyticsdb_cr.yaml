@@ -1,0 +1,7 @@
+apiVersion: contrail-operators.juniper.net/v1alpha1
+kind: AnalyticsDb
+metadata:
+  name: example-analyticsdb
+spec:
+  # Add fields here
+  size: 3

@@ -1,0 +1,7 @@
+apiVersion: contrail-operators.juniper.net/v1alpha1
+kind: AnalyticsNode
+metadata:
+  name: example-analyticsnode
+spec:
+  # Add fields here
+  size: 3
