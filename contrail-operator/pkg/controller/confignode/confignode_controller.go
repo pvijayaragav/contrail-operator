@@ -57,12 +57,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// TODO(user): Modify this to be the types you create that are owned by the primary resource
 	// Watch for changes to secondary resource Pods and requeue the owner ConfigNode
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
+	err = c.Watch(&source.Kind{Type: &corev1.ConfigMap{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
-		OwnerType:    &contrailoperatorsv1alpha1.ConfigNode{},
+		OwnerType:    &contrailoperatorsv1alpha1.InfraVars{},
 	})
 	if err != nil {
 		return err
@@ -81,10 +81,12 @@ type ReconcileConfigNode struct {
 	scheme *runtime.Scheme
 }
 
+var contrail_registry, contrail_tag string
+
 func (r *ReconcileConfigNode) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling ConfigNode")
-	instance := &contrailoperatorsv1alpha1.ConfigNode{}
+	instance := &contrailoperatorsv1alpha1.InfraVars{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -93,6 +95,8 @@ func (r *ReconcileConfigNode) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, err
 	}
 
+	contrail_registry = instance.Spec.ContrailRegistry
+	contrail_tag = instance.Spec.ContrailTag
 	ds := newDSForCR(instance)
 
 	if err := controllerutil.SetControllerReference(instance, ds, r.scheme); err != nil {
@@ -117,13 +121,13 @@ func (r *ReconcileConfigNode) Reconcile(request reconcile.Request) (reconcile.Re
 	return reconcile.Result{}, nil
 }
 
-func newDSForCR(cr *contrailoperatorsv1alpha1.ConfigNode) *appsv1.DaemonSet{
+func newDSForCR(cr *contrailoperatorsv1alpha1.InfraVars) *appsv1.DaemonSet{
     labels := map[string]string{
-								"app": cr.Name,
+								"app": "confignode",
 							}
 		return &appsv1.DaemonSet{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      cr.Name + "-ds",
+							Name:      "confignode" + "-ds",
 							Namespace: cr.Namespace,
 							Labels:    labels,
 						},
@@ -131,7 +135,7 @@ func newDSForCR(cr *contrailoperatorsv1alpha1.ConfigNode) *appsv1.DaemonSet{
 							Selector: &metav1.LabelSelector{MatchLabels: labels},
 							Template: corev1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
-									Name:      cr.Name + "-pod-template",
+									Name:      "confignode" + "-pod-template",
 									Namespace: cr.Namespace,
 									Labels:    labels,
 								},
@@ -155,20 +159,19 @@ func newDSForCR(cr *contrailoperatorsv1alpha1.ConfigNode) *appsv1.DaemonSet{
 		}
 }
 
-func initContainersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Container{
+func initContainersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container{
 
 	return []corev1.Container{
 		{
 			Name:    		"contrail-node-init",
-			Image:   		"opencontrailnightly/contrail-node-init",
-			Command: 		[]string{"./entrypoint.sh"},
+			Image:   		contrail_registry+"/contrail-node-init"+contrail_tag,
 			SecurityContext:	&corev1.SecurityContext{
 							Privileged: func(b bool) *bool { return &b }(true),
 			},
 			Env:			[]corev1.EnvVar{
 						{
 							Name: "IPTABLES_CHAIN",
-							Value: "OS_FIREWALL_ALLOW",
+							Value: "INPUT",
 						},
 						{
 							Name: "CONFIGURE_IPTABLES",
@@ -180,7 +183,7 @@ func initContainersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Cont
 						},
 						{
 							Name: "CONTRAIL_STATUS_IMAGE",
-							Value: "opencontrailnightly/contrail-status",
+							Value: contrail_registry+"/contrail-status"+contrail_tag,
 						},
 			},
 			EnvFrom:		[]corev1.EnvFromSource{
@@ -200,12 +203,11 @@ func initContainersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Cont
 }
 }
 
-func containersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Container{
+func containersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container{
 	return []corev1.Container{
 	{
 		Name:			"contrail-controller-config-nodemgr",
-		Image:   		"opencontrailnightly/contrail-nodemgr",
-		Command: 		[]string{"./entrypoint.sh"},
+		Image:   		contrail_registry+"/contrail-nodemgr"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
 		SecurityContext:	&corev1.SecurityContext{
 						Privileged: func(b bool) *bool { return &b }(true),
@@ -236,7 +238,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Containe
 			},
 			{
 				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-nodeMgr-conf-env"},
+						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-nodemgr-conf-env"},
 				},
 			},
 		},
@@ -247,7 +249,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Containe
 				},
 				{
 					MountPath: "/var/log/contrail",
-					Name: "configdb-logs",
+					Name: "config-logs",
 				},
 				{
 					MountPath: "/etc/localtime",
@@ -257,8 +259,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Containe
 	},
 	{
 		Name:			"contrail-controller-config-api",
-		Image:   		"opencontrailnightly/contrail-controller-config-api",
-		Command: 		[]string{"./entrypoint.sh"},
+		Image:   		contrail_registry+"/contrail-controller-config-api"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
 		SecurityContext:	&corev1.SecurityContext{
 						Privileged: func(b bool) *bool { return &b }(true),
@@ -271,7 +272,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Containe
 			},
 			{
 				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-configZk-conf-env"},
+						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-configzk-conf-env"},
 				},
 			},
 		},
@@ -288,8 +289,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Containe
 	},
 	{
 		Name:			"contrail-controller-config-devicemgr",
-		Image:   		"opencontrailnightly/contrail-controller-config-devicemgr",
-		Command: 		[]string{"./entrypoint.sh"},
+		Image:   		contrail_registry+"/contrail-controller-config-devicemgr"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
 		SecurityContext:	&corev1.SecurityContext{
 						Privileged: func(b bool) *bool { return &b }(true),
@@ -302,7 +302,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Containe
 			},
 			{
 				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-configZk-conf-env"},
+						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-configzk-conf-env"},
 				},
 			},
 		},
@@ -319,8 +319,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Containe
 	},
 	{
 		Name:			"contrail-controller-config-schema",
-		Image:   		"opencontrailnightly/contrail-controller-config-schema",
-		Command: 		[]string{"./entrypoint.sh"},
+		Image:   		contrail_registry+"/contrail-controller-config-schema"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
 		SecurityContext:	&corev1.SecurityContext{
 						Privileged: func(b bool) *bool { return &b }(true),
@@ -333,7 +332,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Containe
 			},
 			{
 				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-configZk-conf-env"},
+						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-configzk-conf-env"},
 				},
 			},
 		},
@@ -350,8 +349,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Containe
 	},
 	{
 		Name:			"contrail-controller-config-svcmonitor",
-		Image:   		"opencontrailnightly/contrail-controller-config-svcmonitor",
-		Command: 		[]string{"./entrypoint.sh"},
+		Image:   		contrail_registry+"/contrail-controller-config-svcmonitor"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
 		SecurityContext:	&corev1.SecurityContext{
 						Privileged: func(b bool) *bool { return &b }(true),
@@ -364,7 +362,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.ConfigNode) []corev1.Containe
 			},
 			{
 				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-configZk-conf-env"},
+						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-configzk-conf-env"},
 				},
 			},
 		},

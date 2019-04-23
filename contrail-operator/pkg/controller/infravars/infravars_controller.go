@@ -96,8 +96,11 @@ func (r *ReconcileInfraVars) Reconcile(request reconcile.Request) (reconcile.Res
 	analyticsDbCm := newAnalyticsDbCm(instance)
 	configDbCm := newConfigDbCm(instance)
 	rabbitCm := newRabbitCm(instance)
+	nodemgrCm := newNodeMgrCmForDS(instance)
+	secretK8s := newSecretK8s(instance)
 
-	mainCm := []*corev1.ConfigMap{envCm, kubeManagerCm, kubernetesCm, configZkCm,analyticsZkCm, analyticsDbCm, configDbCm, rabbitCm }
+
+	mainCm := []*corev1.ConfigMap{envCm, kubeManagerCm, kubernetesCm, configZkCm,analyticsZkCm, analyticsDbCm, configDbCm, rabbitCm, nodemgrCm}
 
 	for _, cm := range mainCm {
 	if err := controllerutil.SetControllerReference(instance, cm, r.scheme); err != nil {
@@ -118,6 +121,23 @@ func (r *ReconcileInfraVars) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 	}
 
+	if err := controllerutil.SetControllerReference(instance, secretK8s, r.scheme); err != nil {
+		return reconcile.Result{}, err
+	}
+	found_secret := &corev1.Secret{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: secretK8s.Name, Namespace: secretK8s.Namespace}, found_secret)
+	if err != nil && errors.IsNotFound(err) {
+		reqLogger.Info("Creating a new Secret", "Secret.Namespace", secretK8s.Namespace, "Secret.Name", secretK8s.Name)
+		err = r.client.Create(context.TODO(), secretK8s)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	} else if err != nil {
+		return reconcile.Result{}, err
+	} else {
+	reqLogger.Info("Skip reconcile: Secret already exists", "Secret.Namespace", found_secret.Namespace, "Secret.Name", found_secret.Name)
+	}
+
 	return reconcile.Result{}, nil
 }
 
@@ -134,10 +154,23 @@ func getContrailNodes(nodes []corev1.Node) []string{
 	return nodeNames
 }
 
+func newSecretK8s(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.Secret {
+		return &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:           "contrail-kubernetes-token",
+				Namespace:      cr.Namespace,
+				Annotations:    map[string]string {
+					"kubernetes.io/service-account.name": "contrail-operator",
+				},
+			},
+			Type:	"kubernetes.io/service-account-token",
+		}
+}
+
 func newNodeMgrCmForDS(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:           "contrail-nodeMgr-conf-env",
+			Name:           "contrail-nodemgr-conf-env",
 			Namespace:      cr.Namespace,
 		},
 		Data: map[string]string{
@@ -183,12 +216,12 @@ func newKubeManagerCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap
 	apiServer := cr.Spec.ApiServer
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:		"contrail-kubeManager-conf-env",
+			Name:		"contrail-kubemanager-conf-env",
 			Namespace:	cr.Namespace,
 		},
 		Data: map[string]string{
 			"KUBERNETES_API_SERVER": apiServer,
-			"KUBERNETES_API_SECURE_PORT": "8443",
+			"KUBERNETES_API_SECURE_PORT": "6443",
 			"K8S_TOKEN_FILE": "/tmp/serviceaccount/token",
 			"KUBERNETES_CLUSTER_NAME": "k8s",
 			"KUBERNETES_CLUSTER_PROJECT": "{}",
@@ -212,7 +245,7 @@ func newKubernetesCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
 		},
 		Data: map[string]string{
 			"KUBERNETES_API_SERVER": apiServer,
-			"KUBERNETES_API_SECURE_PORT": "8443",
+			"KUBERNETES_API_SECURE_PORT": "6443",
 			"K8S_TOKEN_FILE": "/tmp/serviceaccount/token",
 		},
 	}
@@ -221,7 +254,7 @@ func newKubernetesCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
 func newAnalyticsZkCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:		"contrail-analyticsZk-conf-env",
+			Name:		"contrail-analyticszk-conf-env",
 			Namespace:	cr.Namespace,
 		},
 		Data: map[string]string{
@@ -234,7 +267,7 @@ func newAnalyticsZkCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap
 func newConfigZkCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:		"contrail-configZk-conf-env",
+			Name:		"contrail-configzk-conf-env",
 			Namespace:	cr.Namespace,
 		},
 		Data: map[string]string{
@@ -248,7 +281,7 @@ func newAnalyticsDbCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap
 	contrailNodes := cr.Spec.ContrailMasters
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:		"contrail-analyticsDb-conf-env",
+			Name:		"contrail-analyticsdb-conf-env",
 			Namespace:	cr.Namespace,
 		},
 		Data: map[string]string{
@@ -273,12 +306,12 @@ func newConfigDbCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
 	contrailNodes := cr.Spec.ContrailMasters
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:		"contrail-configDb-conf-env",
+			Name:		"contrail-configdb-conf-env",
 			Namespace:	cr.Namespace,
 		},
 		Data: map[string]string{
 			"CASSANDRA_SEEDS": contrailNodes,
-		  "CASSANDRA_CLUSTER_NAME": "Contrail",
+		  "CASSANDRA_CLUSTER_NAME": "ContrailConfigDB",
 		  "CASSANDRA_START_RPC": "true",
 		  "CASSANDRA_LISTEN_ADDRESS": "auto",
 		  "CASSANDRA_PORT": "9164",
@@ -301,7 +334,7 @@ func newRabbitCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
 			Namespace:	cr.Namespace,
 		},
 		Data: map[string]string{
-			"RABBITMQ_NODE_PORT": "{{ rabbitmq_node_port }}",
+			"RABBITMQ_NODE_PORT": "5672",
 			"RABBITMQ_ERLANG_COOKIE": "47EFF3BB-4786-46E0-A5BB-58455B3C2CB4",
 		},
 	}

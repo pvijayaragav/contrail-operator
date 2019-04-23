@@ -60,9 +60,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	// TODO(user): Modify this to be the types you create that are owned by the primary resource
 	// Watch for changes to secondary resource Pods and requeue the owner Vrouter
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
+	err = c.Watch(&source.Kind{Type: &corev1.ConfigMap{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
-		OwnerType:    &contrailoperatorsv1alpha1.Vrouter{},
+		OwnerType:    &contrailoperatorsv1alpha1.InfraVars{},
 	})
 	if err != nil {
 		return err
@@ -81,11 +81,12 @@ type ReconcileVrouter struct {
 	scheme *runtime.Scheme
 }
 
+var contrail_registry, contrail_tag string
 
 func (r *ReconcileVrouter) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling Vrouter")
-	instance := &contrailoperatorsv1alpha1.Vrouter{}
+	instance := &contrailoperatorsv1alpha1.InfraVars{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -94,6 +95,8 @@ func (r *ReconcileVrouter) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
+	contrail_registry = instance.Spec.ContrailRegistry
+	contrail_tag = instance.Spec.ContrailTag
 	ds := newDSForCR(instance)
 
 	if err := controllerutil.SetControllerReference(instance, ds, r.scheme); err != nil {
@@ -119,13 +122,13 @@ func (r *ReconcileVrouter) Reconcile(request reconcile.Request) (reconcile.Resul
 	return reconcile.Result{}, nil
 }
 
-func newDSForCR(cr *contrailoperatorsv1alpha1.Vrouter) *appsv1.DaemonSet{
+func newDSForCR(cr *contrailoperatorsv1alpha1.InfraVars) *appsv1.DaemonSet{
     labels := map[string]string{
-                "app": cr.Name,
+                "app": "vrouter",
         }
 		return &appsv1.DaemonSet{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      cr.Name + "-ds",
+							Name:      "vrouter" + "-ds",
 							Namespace: cr.Namespace,
 							Labels:    labels,
 						},
@@ -133,7 +136,7 @@ func newDSForCR(cr *contrailoperatorsv1alpha1.Vrouter) *appsv1.DaemonSet{
 							Selector: &metav1.LabelSelector{MatchLabels: labels},
 							Template: corev1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
-									Name:      cr.Name + "-pod-template",
+									Name:      "vrouter" + "-pod-template",
 									Namespace: cr.Namespace,
 									Labels:    labels,
 								},
@@ -154,20 +157,19 @@ func newDSForCR(cr *contrailoperatorsv1alpha1.Vrouter) *appsv1.DaemonSet{
 		}
 }
 
-func initContainersForDS(cr *contrailoperatorsv1alpha1.Vrouter) []corev1.Container{
+func initContainersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container{
 
 	return []corev1.Container{
 		{
 			Name:    		"contrail-node-init",
-			Image:   		"opencontrailnightly/contrail-node-init",
-			Command: 		[]string{"./entrypoint.sh"},
+			Image:   		contrail_registry+"/contrail-node-init"+contrail_tag,
 			SecurityContext:	&corev1.SecurityContext{
 							Privileged: func(b bool) *bool { return &b }(true),
 			},
 			Env:			[]corev1.EnvVar{
 						{
 							Name: "CONTRAIL_STATUS_IMAGE",
-							Value: "opencontrailnightly/contrail-status",
+							Value: contrail_registry+"/contrail-status"+contrail_tag,
 						},
 						{
 							Name: "CONFIGURE_IPTABLES",
@@ -194,7 +196,7 @@ func initContainersForDS(cr *contrailoperatorsv1alpha1.Vrouter) []corev1.Contain
 		},
 		{
 			Name:    "contrail-vrouter-kernel-init",
-			Image:   "opencontrailnightly/contrail-vrouter-kernel-init",
+			Image:   contrail_registry+"/contrail-vrouter-kernel-init"+contrail_tag,
 			ImagePullPolicy: "IfNotPresent",
 			SecurityContext:	&corev1.SecurityContext{
 							Privileged: func(b bool) *bool { return &b }(true),
@@ -231,7 +233,7 @@ func initContainersForDS(cr *contrailoperatorsv1alpha1.Vrouter) []corev1.Contain
 		},
 		{
 			Name:	"contrail-vrouter-cni-init",
-			Image:	"opencontrailnightly/contrail-kubernetes-cni-init",
+			Image:	contrail_registry+"/contrail-kubernetes-cni-init"+contrail_tag,
 			ImagePullPolicy:	"IfNotPresent",
 			SecurityContext:	&corev1.SecurityContext{
 							Privileged: func(b bool) *bool { return &b }(true),
@@ -269,12 +271,11 @@ func initContainersForDS(cr *contrailoperatorsv1alpha1.Vrouter) []corev1.Contain
 	}
 }
 
-func containersForDS(cr *contrailoperatorsv1alpha1.Vrouter) []corev1.Container{
+func containersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container{
 	return []corev1.Container{
 		{
 		Name:			"contrail-vrouter-agent",
-		Image:   		"opencontrailnightly/contrail-vrouter-agent",
-		Command: 		[]string{"./entrypoint.sh"},
+		Image:   		contrail_registry+"/contrail-vrouter-agent"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
 		SecurityContext:	&corev1.SecurityContext{
 						Privileged: func(b bool) *bool { return &b }(true),
@@ -327,7 +328,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.Vrouter) []corev1.Container{
 	},
 	{
 		Name:    		"contrail-agent-nodemgr",
-		Image:   		"opencontrailnightly/contrail-nodemgr",
+		Image:   		contrail_registry+"/contrail-nodemgr"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
 		SecurityContext:	&corev1.SecurityContext{
 						Privileged: func(b bool) *bool { return &b }(true),
@@ -346,7 +347,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.Vrouter) []corev1.Container{
 			},
 			{
 				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-nodeMgr-conf-env"},
+						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-nodemgr-conf-env"},
 				},
 			},
 		},

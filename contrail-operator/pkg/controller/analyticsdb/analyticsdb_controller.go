@@ -57,12 +57,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// TODO(user): Modify this to be the types you create that are owned by the primary resource
 	// Watch for changes to secondary resource Pods and requeue the owner AnalyticsDb
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
+	err = c.Watch(&source.Kind{Type: &corev1.ConfigMap{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
-		OwnerType:    &contrailoperatorsv1alpha1.AnalyticsDb{},
+		OwnerType:    &contrailoperatorsv1alpha1.InfraVars{},
 	})
 	if err != nil {
 		return err
@@ -81,21 +81,27 @@ type ReconcileAnalyticsDb struct {
 	scheme *runtime.Scheme
 }
 
+var contrail_registry, contrail_tag string
+
 func (r *ReconcileAnalyticsDb) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling AnalyticsDb")
-	instance := &contrailoperatorsv1alpha1.AnalyticsDb{}
+	reqLogger.Info("Reconciling AnalyticsDb duh")
+//	instance := &contrailoperatorsv1alpha1.AnalyticsDb{}
+	instance := &contrailoperatorsv1alpha1.InfraVars{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
+			reqLogger.Info("Error in client get")
 			return reconcile.Result{}, nil
 		}
 		return reconcile.Result{}, err
 	}
-
+	contrail_registry = instance.Spec.ContrailRegistry
+	contrail_tag = instance.Spec.ContrailTag
 	ds := newDSForCR(instance)
 
 	if err := controllerutil.SetControllerReference(instance, ds, r.scheme); err != nil {
+		reqLogger.Info("Error in controller get")
 		return reconcile.Result{}, err
 	}
 	found := &appsv1.DaemonSet{}
@@ -104,11 +110,14 @@ func (r *ReconcileAnalyticsDb) Reconcile(request reconcile.Request) (reconcile.R
 		reqLogger.Info("Creating a new DS", "DS.Namespace", ds.Namespace, "DS.Name", ds.Name)
 		err = r.client.Create(context.TODO(), ds)
 		if err != nil {
+			reqLogger.Info("Error in create DS")
 			return reconcile.Result{}, err
 		}
+		reqLogger.Info("DS created successfully")
 		// Pod created successfully - don't requeue
 		return reconcile.Result{}, nil
 	} else if err != nil {
+		reqLogger.Info("Error in DS get")
 		return reconcile.Result{}, err
 	}
 	// Pod already exists - don't requeue
@@ -117,13 +126,13 @@ func (r *ReconcileAnalyticsDb) Reconcile(request reconcile.Request) (reconcile.R
 	return reconcile.Result{}, nil
 }
 
-func newDSForCR(cr *contrailoperatorsv1alpha1.AnalyticsDb) *appsv1.DaemonSet{
+func newDSForCR(cr *contrailoperatorsv1alpha1.InfraVars) *appsv1.DaemonSet{
     labels := map[string]string{
-								"app": cr.Name,
+								"app": "analyticsdb",
 							}
 		return &appsv1.DaemonSet{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      cr.Name + "-ds",
+							Name:      "analyticsdb" + "-ds",
 							Namespace: cr.Namespace,
 							Labels:    labels,
 						},
@@ -131,7 +140,7 @@ func newDSForCR(cr *contrailoperatorsv1alpha1.AnalyticsDb) *appsv1.DaemonSet{
 							Selector: &metav1.LabelSelector{MatchLabels: labels},
 							Template: corev1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
-									Name:      cr.Name + "-pod-template",
+									Name:      "analyticsdb" + "-pod-template",
 									Namespace: cr.Namespace,
 									Labels:    labels,
 								},
@@ -155,20 +164,18 @@ func newDSForCR(cr *contrailoperatorsv1alpha1.AnalyticsDb) *appsv1.DaemonSet{
 		}
 }
 
-func initContainersForDS(cr *contrailoperatorsv1alpha1.AnalyticsDb) []corev1.Container{
-
+func initContainersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container{
 	return []corev1.Container{
 		{
 			Name:    		"contrail-node-init",
-			Image:   		"opencontrailnightly/contrail-node-init",
-			Command: 		[]string{"./entrypoint.sh"},
+			Image:   		contrail_registry+"/contrail-node-init"+contrail_tag,
 			SecurityContext:	&corev1.SecurityContext{
 							Privileged: func(b bool) *bool { return &b }(true),
 			},
 			Env:			[]corev1.EnvVar{
 						{
 							Name: "IPTABLES_CHAIN",
-							Value: "OS_FIREWALL_ALLOW",
+							Value: "INPUT",
 						},
 						{
 							Name: "CONFIGURE_IPTABLES",
@@ -180,7 +187,7 @@ func initContainersForDS(cr *contrailoperatorsv1alpha1.AnalyticsDb) []corev1.Con
 						},
 						{
 							Name: "CONTRAIL_STATUS_IMAGE",
-							Value: "opencontrailnightly/contrail-status",
+							Value: contrail_registry+"/contrail-status"+contrail_tag,
 						},
 			},
 			EnvFrom:		[]corev1.EnvFromSource{
@@ -204,12 +211,11 @@ func initContainersForDS(cr *contrailoperatorsv1alpha1.AnalyticsDb) []corev1.Con
 }
 }
 
-func containersForDS(cr *contrailoperatorsv1alpha1.AnalyticsDb) []corev1.Container{
+func containersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container{
 	return []corev1.Container{
 	{
 		Name:			"contrail-analyticsdb-nodemgr",
-		Image:   		"opencontrailnightly/contrail-nodemgr",
-		Command: 		[]string{"./entrypoint.sh"},
+		Image:   		contrail_registry+"/contrail-nodemgr"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
 		SecurityContext:	&corev1.SecurityContext{
 						Privileged: func(b bool) *bool { return &b }(true),
@@ -232,12 +238,12 @@ func containersForDS(cr *contrailoperatorsv1alpha1.AnalyticsDb) []corev1.Contain
 			},
 			{
 				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-nodeMgr-conf-env"},
+						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-nodemgr-conf-env"},
 				},
 			},
 			{
 				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-analyticsDb-conf-env"},
+						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-analyticsdb-conf-env"},
 				},
 			},
 		},
@@ -258,8 +264,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.AnalyticsDb) []corev1.Contain
 	},
 	{
 		Name:			"contrail-analyticsdb",
-		Image:   		"opencontrailnightly/contrail-external-cassandra",
-		Command: 		[]string{"./entrypoint.sh"},
+		Image:   		contrail_registry+"/contrail-external-cassandra"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
 		SecurityContext:	&corev1.SecurityContext{
 						Privileged: func(b bool) *bool { return &b }(true),
@@ -278,7 +283,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.AnalyticsDb) []corev1.Contain
 			},
 			{
 				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-analyticdDb-conf-env"},
+						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-analyticsdb-conf-env"},
 				},
 			},
 		},
@@ -295,8 +300,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.AnalyticsDb) []corev1.Contain
 	},
 	{
 		Name:			"contrail-analytics-query-engine",
-		Image:   		"opencontrailnightly/contrail-analytics-query-engine",
-		Command: 		[]string{"./entrypoint.sh"},
+		Image:   		contrail_registry+"/contrail-analytics-query-engine"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
 		SecurityContext:	&corev1.SecurityContext{
 						Privileged: func(b bool) *bool { return &b }(true),
@@ -315,7 +319,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.AnalyticsDb) []corev1.Contain
 			},
 			{
 				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-analyticsZk-conf-env"},
+						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-analyticszk-conf-env"},
 				},
 			},
 		},

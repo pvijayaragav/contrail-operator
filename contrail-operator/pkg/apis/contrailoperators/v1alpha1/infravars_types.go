@@ -15,6 +15,8 @@ type InfraVarsSpec struct {
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
 		ContrailMasters string `json:"contrailMasters"`
 		ApiServer string `json:"apiServer"`
+		ContrailRegistry string `json:"contrail_registry"`
+		ContrailTag string `json:"contrail_tag"`
 }
 
 // InfraVarsStatus defines the observed state of InfraVars
