@@ -206,7 +206,7 @@ func initContainersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Conta
 func containersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container{
 	return []corev1.Container{
 	{
-		Name:			"contrail-controller-control-nodemgr",
+		Name:			"contrail-kubemanager-nodemgr",
 		Image:   		contrail_registry+"/contrail-nodemgr"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
 		SecurityContext:	&corev1.SecurityContext{
@@ -215,7 +215,7 @@ func containersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container
 		Env:			[]corev1.EnvVar{
 					{
 						Name: "NODE_TYPE",
-						Value: "control",
+						Value: "kubernetes",
 					},
 		},
 		EnvFrom:		[]corev1.EnvFromSource{

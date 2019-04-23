@@ -218,10 +218,6 @@ func containersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container
 						Value: "config",
 					},
 					{
-						Name: "DATABASE_NODEMGR__DEFAULTS__minimum_diskGB",
-						Value: "2",
-					},
-					{
 						Name: "CASSANDRA_CQL_PORT",
 						Value: "9041",
 					},
