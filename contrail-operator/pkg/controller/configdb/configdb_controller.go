@@ -47,12 +47,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// Watch for changes to primary resource ConfigDb
-	err = c.Watch(&source.Kind{Type: &contrailoperatorsv1alpha1.ConfigDb{}}, &handler.EnqueueRequestForObject{})
-	if err != nil {
-		return err
-	}
-
 	err = c.Watch(&source.Kind{Type: &contrailoperatorsv1alpha1.InfraVars{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
 		return err
@@ -317,6 +311,10 @@ func containersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container
 				{
 					MountPath: "/var/log/redis",
 					Name: "redis-logs",
+				},
+				{
+					MountPath: "/host/usr/bin",
+					Name: "host-usr-bin",
 				},
 		},
 	},

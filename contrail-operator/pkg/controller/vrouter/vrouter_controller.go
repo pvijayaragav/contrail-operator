@@ -47,12 +47,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// Watch for changes to primary resource Vrouter
-	err = c.Watch(&source.Kind{Type: &contrailoperatorsv1alpha1.Vrouter{}}, &handler.EnqueueRequestForObject{})
-	if err != nil {
-		return err
-	}
-
 	err = c.Watch(&source.Kind{Type: &contrailoperatorsv1alpha1.InfraVars{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
 		return err

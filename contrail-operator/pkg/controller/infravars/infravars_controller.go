@@ -58,6 +58,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		IsController: true,
 		OwnerType:    &contrailoperatorsv1alpha1.InfraVars{},
 	})
+
 	if err != nil {
 		return err
 	}

@@ -48,10 +48,10 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to primary resource AnalyticsDb
-	err = c.Watch(&source.Kind{Type: &contrailoperatorsv1alpha1.AnalyticsDb{}}, &handler.EnqueueRequestForObject{})
-	if err != nil {
-		return err
-	}
+	//err = c.Watch(&source.Kind{Type: &contrailoperatorsv1alpha1.AnalyticsDb{}}, &handler.EnqueueRequestForObject{})
+	//if err != nil {
+	//	return err
+	//}
 
 	err = c.Watch(&source.Kind{Type: &contrailoperatorsv1alpha1.InfraVars{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
@@ -96,6 +96,7 @@ func (r *ReconcileAnalyticsDb) Reconcile(request reconcile.Request) (reconcile.R
 		}
 		return reconcile.Result{}, err
 	}
+	
 	contrail_registry = instance.Spec.ContrailRegistry
 	contrail_tag = instance.Spec.ContrailTag
 	ds := newDSForCR(instance)

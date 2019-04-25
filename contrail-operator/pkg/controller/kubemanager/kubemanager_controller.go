@@ -47,12 +47,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// Watch for changes to primary resource KubeManager
-	err = c.Watch(&source.Kind{Type: &contrailoperatorsv1alpha1.KubeManager{}}, &handler.EnqueueRequestForObject{})
-	if err != nil {
-		return err
-	}
-
 	err = c.Watch(&source.Kind{Type: &contrailoperatorsv1alpha1.InfraVars{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
 		return err
@@ -206,46 +200,6 @@ func initContainersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Conta
 func containersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container{
 	return []corev1.Container{
 	{
-		Name:			"contrail-kubemanager-nodemgr",
-		Image:   		contrail_registry+"/contrail-nodemgr"+contrail_tag,
-		ImagePullPolicy: "IfNotPresent",
-		SecurityContext:	&corev1.SecurityContext{
-						Privileged: func(b bool) *bool { return &b }(true),
-		},
-		Env:			[]corev1.EnvVar{
-					{
-						Name: "NODE_TYPE",
-						Value: "kubernetes",
-					},
-		},
-		EnvFrom:		[]corev1.EnvFromSource{
-			{
-				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-conf-env"},
-				},
-			},
-			{
-				ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "contrail-nodemgr-conf-env"},
-				},
-			},
-		},
-		VolumeMounts:		[]corev1.VolumeMount{
-				{
-					MountPath: "/mnt",
-					Name: "docker-unix-socket",
-				},
-				{
-					MountPath: "/var/log/contrail",
-					Name: "kubemanager-logs",
-				},
-				{
-					MountPath: "/etc/localtime",
-					Name: "localtime",
-				},
-		},
-	},
-	{
 		Name:			"contrail-kubernetes-kube-manager",
 		Image:   		contrail_registry+"/contrail-kubernetes-kube-manager"+contrail_tag,
 		ImagePullPolicy: "IfNotPresent",
@@ -289,6 +243,14 @@ func containersForDS(cr *contrailoperatorsv1alpha1.InfraVars) []corev1.Container
 
 func volumesForDS() []corev1.Volume{
 	return []corev1.Volume{
+		{
+			Name: "kubemanager-nodemgr-logs",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/var/log/contrail/kubemanager",
+				},
+			},
+		},
 		{
 			Name: "kubemanager-logs",
 			VolumeSource: corev1.VolumeSource{
