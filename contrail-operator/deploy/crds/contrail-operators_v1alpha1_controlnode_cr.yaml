@@ -1,7 +1,0 @@
-apiVersion: contrail-operators.juniper.net/v1alpha1
-kind: ControlNode
-metadata:
-  name: example-controlnode
-spec:
-  # Add fields here
-  size: 3
