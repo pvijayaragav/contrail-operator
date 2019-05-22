@@ -6,5 +6,5 @@ spec:
   # Add fields here
   contrailMasters: "10.84.13.57"
   apiServer: "10.84.13.57"
-  contrail_registry: "ci-repo.englab.juniper.net:5010"
-  contrail_tag: ":rhel-queens-master-683"
+  contrail_registry: "opencontrailnightly"
+  contrail_tag: "latest"
