@@ -2,6 +2,8 @@ package infravars
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	contrailoperatorsv1alpha1 "github.com/operators/contrail-operator/pkg/apis/contrailoperators/v1alpha1"
 
@@ -18,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
 )
 
 var log = logf.Log.WithName("controller_infravars")
@@ -89,17 +92,57 @@ func (r *ReconcileInfraVars) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
-	envCm := newEnvCm(instance)
-	kubeManagerCm := newKubeManagerCm(instance)
-	kubernetesCm := newKubernetesCm(instance)
+	nodeList := &corev1.NodeList{}
+  if err = r.client.List(context.TODO(), nil, nodeList); err != nil {
+        return reconcile.Result{}, err
+  }
+
+	var masterNodes []string
+
+  for _, node := range nodeList.Items {
+//				for _, taint := range node.Spec.Taints {
+//					if string(taint.Key) == "node.kubernetes.io/master" {
+//						fmt.Println("Got master node :", node.Status.Addresses[0].Address)
+//						masterNodes = append(masterNodes, node.Status.Addresses[0].Address)
+//					}
+//				}
+
+				for k, _ := range node.Labels {
+					if k == "node-role.kubernetes.io/master" {
+						fmt.Println("Got master node :", node.Status.Addresses[0].Address)
+						masterNodes = append(masterNodes, node.Status.Addresses[0].Address)
+					}
+				}
+	}
+	contrailNodes := strings.Join(masterNodes, ",")
+
+	fmt.Println("Contrail Nodes :", contrailNodes)
+
+  var apiServer string
+	var apiServerPort string
+
+	epList := &corev1.EndpointsList{}
+	if err = r.client.List(context.TODO(), nil, epList); err != nil {
+				return reconcile.Result{}, err
+	}
+	for _, ep := range epList.Items {
+		if string(ep.Name) == "kubernetes" {
+			fmt.Println("K8s service and port : ", ep.Subsets[0].Addresses[0].IP, ep.Subsets[0].Ports[0].Port)
+			apiServer = ep.Subsets[0].Addresses[0].IP
+			apiServerPort = fmt.Sprint(ep.Subsets[0].Ports[0].Port)
+		}
+	}
+
+	envCm := newEnvCm(instance, contrailNodes)
+	kubeManagerCm := newKubeManagerCm(instance, apiServer, apiServerPort)
+	kubernetesCm := newKubernetesCm(instance, apiServer, apiServerPort)
 	configZkCm := newConfigZkCm(instance)
 	analyticsZkCm := newAnalyticsZkCm(instance)
-	analyticsDbCm := newAnalyticsDbCm(instance)
-	configDbCm := newConfigDbCm(instance)
+	analyticsDbCm := newAnalyticsDbCm(instance, contrailNodes)
+	configDbCm := newConfigDbCm(instance, contrailNodes)
 	rabbitCm := newRabbitCm(instance)
 	nodemgrCm := newNodeMgrCmForDS(instance)
 	secretK8s := newSecretK8s(instance)
-
 
 	mainCm := []*corev1.ConfigMap{envCm, kubeManagerCm, kubernetesCm, configZkCm,analyticsZkCm, analyticsDbCm, configDbCm, rabbitCm, nodemgrCm}
 
@@ -180,8 +223,8 @@ func newNodeMgrCmForDS(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMa
 	}
 }
 
-func newEnvCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
-	contrailNodes := cr.Spec.ContrailMasters
+func newEnvCm(cr *contrailoperatorsv1alpha1.InfraVars, contrailNodes string) *corev1.ConfigMap{
+//	contrailNodes := cr.Spec.ContrailMasters
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:		"contrail-conf-env",
@@ -213,8 +256,8 @@ func newEnvCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
 	}
 }
 
-func newKubeManagerCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
-	apiServer := cr.Spec.ApiServer
+func newKubeManagerCm(cr *contrailoperatorsv1alpha1.InfraVars, apiServer string, apiServerPort string) *corev1.ConfigMap{
+//	apiServer := cr.Spec.ApiServer
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:		"contrail-kubemanager-conf-env",
@@ -222,14 +265,14 @@ func newKubeManagerCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap
 		},
 		Data: map[string]string{
 			"KUBERNETES_API_SERVER": apiServer,
-			"KUBERNETES_API_SECURE_PORT": "6443",
+			"KUBERNETES_API_SECURE_PORT": apiServerPort,
 			"K8S_TOKEN_FILE": "/tmp/serviceaccount/token",
 			"KUBERNETES_CLUSTER_NAME": "k8s",
 			"KUBERNETES_CLUSTER_PROJECT": "{}",
 			"KUBERNETES_CLUSTER_NETWORK": "{}",
 			"KUBERNETES_POD_SUBNETS": "10.32.0.0/12",
 			"KUBERNETES_IP_FABRIC_SUBNETS": "10.64.0.0/12",
-			"KUBERNETES_SERVICE_SUBNETS": "10.96.0.0/12",
+			"KUBERNETES_SERVICE_SUBNETS": "10.96.0.0/16",
 			"KUBERNETES_IP_FABRIC_FORWARDING": "false",
 			"KUBERNETES_IP_FABRIC_SNAT": "true",
 			"KUBERNETES_PUBLIC_FIP_POOL": "{}",
@@ -237,8 +280,8 @@ func newKubeManagerCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap
 	}
 }
 
-func newKubernetesCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
-	apiServer := cr.Spec.ApiServer
+func newKubernetesCm(cr *contrailoperatorsv1alpha1.InfraVars, apiServer string, apiServerPort string) *corev1.ConfigMap{
+//	apiServer := cr.Spec.ApiServer
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:		"contrail-kubernetes-conf-env",
@@ -246,7 +289,7 @@ func newKubernetesCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
 		},
 		Data: map[string]string{
 			"KUBERNETES_API_SERVER": apiServer,
-			"KUBERNETES_API_SECURE_PORT": "6443",
+			"KUBERNETES_API_SECURE_PORT": apiServerPort,
 			"K8S_TOKEN_FILE": "/tmp/serviceaccount/token",
 		},
 	}
@@ -278,8 +321,8 @@ func newConfigZkCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
 	}
 }
 
-func newAnalyticsDbCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
-	contrailNodes := cr.Spec.ContrailMasters
+func newAnalyticsDbCm(cr *contrailoperatorsv1alpha1.InfraVars, contrailNodes string) *corev1.ConfigMap{
+//	contrailNodes := cr.Spec.ContrailMasters
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:		"contrail-analyticsdb-conf-env",
@@ -303,8 +346,8 @@ func newAnalyticsDbCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap
 	}
 }
 
-func newConfigDbCm(cr *contrailoperatorsv1alpha1.InfraVars) *corev1.ConfigMap{
-	contrailNodes := cr.Spec.ContrailMasters
+func newConfigDbCm(cr *contrailoperatorsv1alpha1.InfraVars, contrailNodes string) *corev1.ConfigMap{
+//	contrailNodes := cr.Spec.ContrailMasters
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:		"contrail-configdb-conf-env",

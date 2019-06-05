@@ -1,0 +1,11 @@
+apiVersion: contrail-operators.juniper.net/v1alpha1
+kind: InfraVars
+metadata:
+  name: example-infravars
+spec:
+#  contrailMasters: "10.84.13.57"
+#  apiServer: "10.84.13.57"
+#  contrail_registry: "ci-repo.englab.juniper.net:5010"
+#  contrail_tag: ":rhel-queens-5.1-54"
+  contrail_registry: "opencontrailnightly"
+  contrail_tag: ":latest"

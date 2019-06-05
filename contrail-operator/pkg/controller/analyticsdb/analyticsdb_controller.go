@@ -96,7 +96,7 @@ func (r *ReconcileAnalyticsDb) Reconcile(request reconcile.Request) (reconcile.R
 		}
 		return reconcile.Result{}, err
 	}
-	
+
 	contrail_registry = instance.Spec.ContrailRegistry
 	contrail_tag = instance.Spec.ContrailTag
 	ds := newDSForCR(instance)
@@ -148,11 +148,15 @@ func newDSForCR(cr *contrailoperatorsv1alpha1.InfraVars) *appsv1.DaemonSet{
 								Spec: corev1.PodSpec{
 									HostNetwork: true,
 									NodeSelector: map[string]string{
-													"node-role.kubernetes.io/infra": "true",
+													"node-role.kubernetes.io/master": "",
 										},
 									Tolerations: []corev1.Toleration{
 										{
 											Key: "node.kubernetes.io/not-ready",
+											Operator: "Exists",
+										},
+										{
+											Key: "node.kubernetes.io/master",
 											Operator: "Exists",
 										},
 									},

@@ -141,6 +141,10 @@ func newDSForCR(cr *contrailoperatorsv1alpha1.InfraVars) *appsv1.DaemonSet{
 											Key: "node.kubernetes.io/not-ready",
 											Operator: "Exists",
 										},
+										{
+											Key: "node.kubernetes.io/master",
+											Operator: "Exists",
+										},
 									},
 									InitContainers: initContainersForDS(cr),
 									Containers: containersForDS(cr),
