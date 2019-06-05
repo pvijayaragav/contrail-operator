@@ -100,15 +100,10 @@ func (r *ReconcileInfraVars) Reconcile(request reconcile.Request) (reconcile.Res
 	var masterNodes []string
 
   for _, node := range nodeList.Items {
-//				for _, taint := range node.Spec.Taints {
-//					if string(taint.Key) == "node.kubernetes.io/master" {
-//						fmt.Println("Got master node :", node.Status.Addresses[0].Address)
-//						masterNodes = append(masterNodes, node.Status.Addresses[0].Address)
-//					}
-//				}
-
 				for k, _ := range node.Labels {
 					if k == "node-role.kubernetes.io/master" {
+				for _, taint := range node.Spec.Taints {
+					if string(taint.Key) == "node-role.kubernetes.io/master" {
 						fmt.Println("Got master node :", node.Status.Addresses[0].Address)
 						masterNodes = append(masterNodes, node.Status.Addresses[0].Address)
 					}

@@ -1,5 +1,18 @@
+kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+metadata:
+  name: contrail-operator
+subjects:
+- kind: ServiceAccount
+  name: contrail-operator
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: contrail-operator
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
 metadata:
   creationTimestamp: null
   name: contrail-operator
@@ -14,14 +27,18 @@ rules:
   - events
   - configmaps
   - secrets
+  - serviceaccounts
   verbs:
   - '*'
 - apiGroups:
   - ""
   resources:
   - namespaces
+  - nodes
+  - nodes/status
+  - nodes/spec
   verbs:
-  - get
+  - '*'
 - apiGroups:
   - apps
   resources:
@@ -49,7 +66,6 @@ rules:
 - apiGroups:
   - contrail-operators.juniper.net
   resources:
-  - '*'
   - configdbs
   - confignodes
   - controlnodes
@@ -60,3 +76,9 @@ rules:
   - kubemanagers
   verbs:
   - '*'
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: contrail-operator
+---

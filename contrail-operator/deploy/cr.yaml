@@ -4,7 +4,7 @@ metadata:
   name: example-infravars
 spec:
   # Add fields here
-  contrailMasters: "192.168.1.4"
-  apiServer: "192.168.1.3"
+#  contrailMasters: "10.84.13.57"
+#  apiServer: "10.84.13.57"
   contrail_registry: "opencontrailnightly"
-  contrail_tag: "latest"
+  contrail_tag: ":latest"
