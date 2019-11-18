@@ -168,7 +168,7 @@ spec:
       containers:
         - name: contrail-operator
           # Replace this with the built image name
-          image: "pvijayaragav/operator_test:k8s"
+          image: "pvijayaragav/operator_test:latest"
           command:
           - contrail-operator
           imagePullPolicy: Always
